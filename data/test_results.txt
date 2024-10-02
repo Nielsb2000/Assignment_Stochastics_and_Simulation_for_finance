@@ -1,0 +1,29 @@
+All magnitudes for region Philippines
+KS Test Exponential distribution: 5.803875859799518e-299
+KS Test Normal distribution: 0.0
+KS Test Gamma distribution: 4.32165661476716e-15
+
+Low magnitudes for region Philippines
+KS Test Exponential distribution: 2.4695346710066585e-222
+KS Test Normal distribution: 0.0
+KS Test Gamma distribution: 4.233514999808134e-10
+
+High magnitudes for region Philippines
+KS Test Exponential distribution: 5.704625066316588e-63
+KS Test Normal distribution: 6.868737445491522e-55
+KS Test Gamma distribution: 4.382927028710339e-11
+
+All magnitudes for region Indonesia
+KS Test Exponential distribution: 1.1612967908342659e-51
+KS Test Normal distribution: 1.5020256421676667e-275
+KS Test Gamma distribution: 3.1779828600307564e-05
+
+Low magnitudes for region Indonesia
+KS Test Exponential distribution: 5.332525632816075e-32
+KS Test Normal distribution: 1.8284398513648521e-224
+KS Test Gamma distribution: 0.004163409475409199
+
+High magnitudes for region Indonesia
+KS Test Exponential distribution: 5.586916858132242e-15
+KS Test Normal distribution: 5.0511493884929e-40
+KS Test Gamma distribution: 0.0015952352979441563

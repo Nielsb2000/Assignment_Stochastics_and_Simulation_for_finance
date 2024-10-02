@@ -1,0 +1,25 @@
+Queries from 2009-10-01 00:00:00 to 2024-10-01 00:00:00
+
+query_Phillipines
+    South 4.784
+    North 20.015
+    West 117.817
+    East 128.54
+    [4.784, 20.015] Latitude
+    [117.817, 128.54] Longitude
+query_Fiji (+ Somoa & Tonga)
+    South -22.87
+    North -11.859
+    West 175.298
+    East 190.02
+    [-22.87, -11.859] Latitude
+    [175.298, 190.02] Longitude
+query_Indonesia (West)
+    [-11.249, 5.835] Latitude
+    [94.922, 120.234] Longitude
+query_Alaska (South West)
+    [51.781, 58.494] Latitude
+    [-170.332, -151.084] Longitude
+query_Japan (South East)
+    [32.287, 36.392] Latitude
+    [-223.374, -217.321] Longitude
