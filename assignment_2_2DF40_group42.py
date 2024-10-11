@@ -10,7 +10,7 @@ from scipy import stats
 from statsmodels.distributions.empirical_distribution import ECDF
 from scipy.stats import norm
 
-def plot_counts(region):
+def plot_counts(region, aggregate_period, aggregate_label):
     # Import the data to a dataframe
     data_eq = pd.read_csv(f"data/query_{region}.csv")
 
@@ -19,8 +19,8 @@ def plot_counts(region):
     data_eq = data_eq.sort_values(by='DateTime')   # sort from earliest to newest
 
     # Select only earthquakes within Philippines' borders
-    # selection2 = data['place'].str.contains('Philippines', case=True)
-    # data = data[selection2]
+    selection2 = data_eq['place'].str.contains('Philippines', case=True)
+    data_eq = data_eq[selection2]
 
     # Only keep important column and set the new DateTime column as index
     data_eq_dropped = data_eq[['DateTime','latitude','longitude','mag']].set_index('DateTime')
@@ -30,33 +30,35 @@ def plot_counts(region):
     high_mag_data = data_eq_dropped[data_eq_dropped['mag']>=5]
     low_mag_data = data_eq_dropped[data_eq_dropped['mag']<5]
 
-    # Count amount of earthquakes per day/week
-    full_daily_counts = data_eq_dropped.resample('D').size()
-    print(f'Full amount of earthquakes: {sum(full_daily_counts)}')
-    full_weekly_counts = low_mag_data.resample('W').size()
+    # Count amount of earthquakes per day/week/month
+    full_counts = data_eq_dropped.resample(aggregate_period).size()
+    print(full_counts)
+    print(f'Full amount of earthquakes: {sum(full_counts)}')
 
-    low_daily_counts = low_mag_data.resample('D').size()
-    print(f'Full amount of low magnitude earthquakes: {sum(low_daily_counts)}')
-    low_weekly_counts = low_mag_data.resample('W').size()
+    low_counts = low_mag_data.resample(aggregate_period).size()
+    print(f'Full amount of low magnitude earthquakes: {sum(low_counts)}')
 
-    high_daily_counts = high_mag_data.resample('D').size()
-    print(f'Full amount of high magnitude earthquakes: {sum(high_daily_counts)}')
-    high_weekly_counts = high_mag_data.resample('W').size()
+    high_counts = high_mag_data.resample(aggregate_period).size()
+    print(f'Full amount of high magnitude earthquakes: {sum(high_counts)}')
 
-    # Make plots to show amount of earthquakes per day
+    # Make plots to show amount of earthquakes per month
     fig, axs = plt.subplots(2, 1, figsize=(10, 15))
 
-    axs[0].plot(full_daily_counts, label="Full Daily Counts")
-    axs[0].set_title("Full Counts")
+    # Plot for full data
+    axs[0].plot(full_counts, label="Full Counts")
+    axs[0].set_xlabel('Time Period', size=10)
+    axs[0].set_ylabel('Counts', size=10)
+    axs[0].set_title("Full Counts", size=15)
 
-    axs[1].plot(low_daily_counts, label="Low Mag Daily Counts")
-    axs[1].set_title("High vs Low Counts")
-
-    axs[1].plot(high_daily_counts, label="High Mag Daily Counts")
+    # Plot for low/high magnitude data
+    axs[1].plot(low_counts, label="Low Magnitude (< 5)")
+    axs[1].plot(high_counts, label="High Magnitude (>= 5)")
+    axs[1].set_xlabel('Time Period', size=10)
+    axs[1].set_ylabel('Counts', size=10)
+    axs[1].set_title("High and Low Magnitudes Counts", size=15)
     axs[1].legend()
-    fig.suptitle('Daily and Weekly Counts Comparison')
-    plt.xlabel('Time Period')
-    plt.ylabel('Counts')
+
+    fig.suptitle(f'Amount of reported earthquakes in {region} aggregated per {aggregate_label}', size=20)
     plt.show()
 
     data_eq = data_eq_dropped.reset_index()
@@ -64,26 +66,27 @@ def plot_counts(region):
     low_mag_data = low_mag_data.reset_index()
     return data_eq, high_mag_data, low_mag_data
 
-def plot_geospatial(data_rest):
+def plot_geospatial(data_eq, magnitude_label):
+    # Import map of the earth from geopandas
     worldmap = gpd.read_file(gpd.datasets.get_path("naturalearth_lowres"))
-    print(tabulate(worldmap.head(), headers='keys', tablefmt="github"))
 
+    # Get map of Philippines
     philippines_map = worldmap[worldmap['name'] == 'Philippines']
-    # philippines_map = worldmap[worldmap['name'] == 'Fiji']
-    # philippines_map = worldmap[worldmap['name'] == 'Indonesia']
 
-
-    philippines_map.plot()
-    plt.show()
-
+    # Plot earthquake data points on Philippines map
     fig, ax = plt.subplots(figsize=(10, 10))
 
-    data_rest['geometry'] = data_rest.apply(lambda x: Point(x['longitude'], x['latitude']), axis=1)
-    data_rest = gpd.GeoDataFrame(data_rest, geometry='geometry')
+    # Append point locations to dataframe
+    data_eq['geometry'] = data_eq.apply(lambda x: Point(x['longitude'], x['latitude']), axis=1)
+    data_eq = gpd.GeoDataFrame(data_eq, geometry='geometry')
 
-
+    # Plot Philippines map and points
     philippines_map.plot(ax=ax, color='lightgray')
-    data_rest.plot(ax=ax, color='red', markersize=data_rest['mag'], alpha=0.05*data_rest['mag'], label='Earthquakes')
+    data_eq.plot(ax=ax, color='red', markersize=data_eq['mag'], alpha=0.05 * data_eq['mag'], label='Earthquakes')
+
+    fig.suptitle(f'Locations of {magnitude_label} earthquakes in the Philippines', size=20)
+    plt.xlabel('Longitude', size=12)
+    plt.ylabel('Latitude', size=12)
     plt.show()
 
 def transform_time_diff_data(data):
@@ -326,30 +329,39 @@ def fit_distribution_simulation(sim_num_quakes, sim_type):
     plt.show()
 
 if __name__ == "__main__":
+    # Geographical area of query
     region = 'Philippines'
-    # region = 'Fiji'
-    # region = 'Indonesia'
-    # region = 'Alaska'
-    # region = 'Japan'
 
-    data_eq, data_high_mag_eq, data_low_mag_eq = plot_counts(region=region)
+    # Descriptive statistics
+    data_eq, data_high_mag_eq, data_low_mag_eq = plot_counts(region=region,
+                                                             aggregate_period='M',
+                                                             aggregate_label='month')
+
+    # Transform dataframes with earthquakes time to interarrival times
     diff_data_eq = transform_time_diff_data(data_eq)
     diff_data_high_mag_eq = transform_time_diff_data(data_high_mag_eq)
     diff_data_low_mag_eq = transform_time_diff_data(data_low_mag_eq)
 
+    # # Distribution fitting for interarrival times
     # fit_distribution(diff_data_eq, region=region, magnitude='All')
     # fit_distribution(diff_data_low_mag_eq, region=region, magnitude='Low')
     # fit_distribution(diff_data_high_mag_eq, region=region, magnitude='High')
 
-    # plot_geospatial(data_eq)
+    # Plot earthquake locations
+    plot_geospatial(data_eq, magnitude_label='all')
+    plot_geospatial(data_high_mag_eq, magnitude_label='high magnitude')
+    plot_geospatial(data_low_mag_eq, magnitude_label='low magnitude')
 
-    sim_num_quakes_low_mag = simulation(diff_data_low_mag_eq)
-    sim_num_quakes_high_mag = simulation(diff_data_high_mag_eq)
+    # # Method 1: Simulate low and high magnitude earthquakes
+    # sim_num_quakes_low_mag = simulation(diff_data_low_mag_eq)
+    # sim_num_quakes_high_mag = simulation(diff_data_high_mag_eq)
 
+    # # Method 1: Find Distribution, mean and sd for low and high magnitude earthquakes
     # fit_distribution_simulation(sim_num_quakes_low_mag, 'type-1')
     # fit_distribution_simulation(sim_num_quakes_high_mag, 'type-2')
 
-    sim_num_quakes_total = sim_num_quakes_low_mag + sim_num_quakes_high_mag
-    fit_distribution_simulation(sim_num_quakes_total, 'all')
+    # # # Method 1: Find Distribution, mean and sd for all earthquakes combined
+    # sim_num_quakes_total = sim_num_quakes_low_mag + sim_num_quakes_high_mag
+    # fit_distribution_simulation(sim_num_quakes_total, 'all')
 
 
