@@ -24,7 +24,7 @@ def plot_counts(region, aggregate_period, aggregate_label):
 
     # Only keep important column and set the new DateTime column as index
     data_eq_dropped = data_eq[['DateTime','latitude','longitude','mag']].set_index('DateTime')
-    print(tabulate(data_eq_dropped.head(), headers='keys', tablefmt="github"))
+    # print(tabulate(data_eq_dropped.head(), headers='keys', tablefmt="github"))
 
     # Split DataFrame into 2 DataFrames for earthquakes with magnitudes lower and higher than 5
     high_mag_data = data_eq_dropped[data_eq_dropped['mag']>=5]
@@ -32,7 +32,6 @@ def plot_counts(region, aggregate_period, aggregate_label):
 
     # Count amount of earthquakes per day/week/month
     full_counts = data_eq_dropped.resample(aggregate_period).size()
-    print(full_counts)
     print(f'Full amount of earthquakes: {sum(full_counts)}')
 
     low_counts = low_mag_data.resample(aggregate_period).size()
@@ -61,9 +60,34 @@ def plot_counts(region, aggregate_period, aggregate_label):
     fig.suptitle(f'Amount of reported earthquakes in {region} aggregated per {aggregate_label}', size=20)
     plt.show()
 
+    # Returned dataframes
     data_eq = data_eq_dropped.reset_index()
     high_mag_data = high_mag_data.reset_index()
     low_mag_data = low_mag_data.reset_index()
+
+    # Extra: Plot a distribution of magnitudes for peak day
+    peak_start = '2023-12-01'
+    peak_end = '2023-12-08'
+
+    # Filter data for peak periods
+    peak_df = data_eq[(data_eq['DateTime'] >= peak_start) & (data_eq['DateTime'] <= peak_end)]
+
+    # Plot histogram of magnitudes in peak periods
+    plt.hist(peak_df['mag'], bins=30, edgecolor='black', density=False)
+    plt.title('Earthquake Magnitudes During Peak Period', size=18)
+    plt.xlabel('Magnitude', size=11)
+    plt.ylabel('Count', size=11)
+    plt.show()
+
+    # Data Summary Statistics for magnitudes
+    print(data_eq['mag'].describe())
+    print(high_mag_data['mag'].describe())
+    print(low_mag_data['mag'].describe())
+
+    # Largest magnitude earthquakes:
+    mag_sorted = data_eq.sort_values(by='mag', ascending=False)
+    print(mag_sorted.head())
+
     return data_eq, high_mag_data, low_mag_data
 
 def plot_geospatial(data_eq, magnitude_label):
@@ -104,13 +128,6 @@ def transform_time_diff_data(data):
     return time_diff_data
 
 def fit_distribution(time_diff_data, region, magnitude):
-    # # Plot a histogram to show density of difference in seconds between earthquakes
-    # plt.hist(time_diff_data, bins=200, rwidth=0.8, edgecolor='black', density=True)
-    # plt.xlabel('Time Difference (seconds)')
-    # plt.ylabel('Frequency')
-    # plt.title('Histogram of Time Differences')
-    # plt.show()
-
     # Fitting distributions
     # First and second moment
     M1 = np.mean(time_diff_data)  # first moment
@@ -144,26 +161,31 @@ def fit_distribution(time_diff_data, region, magnitude):
 
     # Add theoretical density
     xs = np.arange(np.min(time_diff_data), np.max(time_diff_data))
-    print(xs)
 
     # Show a plot with the histogram of the time difference data, and the estimated distributions
-    plt.figure()
-    plt.hist(time_diff_data, bins=20, rwidth=0.8, edgecolor='black', density=True)
+    plt.figure(figsize=(8, 8))
+    plt.hist(time_diff_data, bins=80, edgecolor='black', density=True)
     plt.plot(xs, estExpDist.pdf(xs), 'r', label='Exponential Distribution')
     plt.plot(xs, estNormDist.pdf(xs), 'b', label='Normal Distribution')
     # plt.plot(xs, estGammaDist.pdf(xs), 'y', label='Gamma Distribution')
     plt.plot(xs, estUniformDist.pdf(xs), 'm', label='Uniform Distribution')
+    plt.title('Histogram of interarrival times with fitted distributions', size=17)
+    plt.xlabel('Interarrival Time (s)', size=11)
+    plt.ylabel('Density', size=11)
     plt.legend()
     plt.show()
 
     # Empirical distribution function (Method 2: using Python function ECDF)
     ecdf = ECDF(time_diff_data)
-    plt.figure()
-    plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Time Difference ECDF')
+    plt.figure(figsize=(9, 9))
+    plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Interarrival Times eCDF')
     plt.plot(xs, estExpDist.cdf(xs), 'r', label='Exponential Distribution')
     plt.plot(xs, estNormDist.cdf(xs), color='b', label='Normal Distribution')
     plt.plot(xs, estGammaDist.cdf(xs), 'y', label='Gamma Distribution')
     plt.plot(xs, estUniformDist.cdf(xs), 'm', label='Uniform Distribution')
+    plt.title('Empirical Distribution Function with fitted cumulative distributions', size=18)
+    plt.xlabel('Interarrival Time (s)', size=12)
+    plt.ylabel('Cumulative Probability', size=12)
     plt.legend()
     plt.show()
 
@@ -183,6 +205,32 @@ def fit_distribution(time_diff_data, region, magnitude):
         f.write('\nKS Test Normal distribution: ' + str(test_normal[1]))
         f.write('\nKS Test Gamma distribution: ' + str(test_gamma[1]))
         f.write('\nKS Test Uniform distribution: ' + str(test_uniform[1]))
+
+def calculate_probabilities(data_eq):
+    # Cumulative distribution function for magnitudes
+    ecdf = ECDF(data_eq['mag'])
+    plt.figure(figsize=(9, 9))
+    plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Interarrival Times eCDF')
+
+    x_value = 5 # mag = 5
+    plt.axvline(x=x_value, color='red', linestyle='--')     # vertical line at mag = 5
+    # Calculate y-value where the vertical line meets the ECDF
+    y_value = ecdf.y[ecdf.x < x_value][-1]    # y-value just before the jump at mag = 5
+    plt.axhline(y=y_value, color='blue', linestyle='--')    # horizontal line at y_value
+
+    # Add text to show y-value
+    plt.text(x_value - 1.92, y_value, f'{y_value:.4f}', color='blue', va='center')  # 4 decimals
+
+    plt.title('Cumulative distribution function of earthquakes by magnitude', size=18)
+    plt.xlabel('Cumulative probability', size=11)
+    plt.ylabel('Density', size=11)
+
+    plt.grid()
+
+    plt.show()
+
+    prob = len(data_eq[data_eq['mag'] < 5]) / len(data_eq)
+    print(f'Probability that random earthquake has magnitude less than 5 is equal to = {prob}')
 
 def simulation(time_diff_data):
     rng = np.random.default_rng()
@@ -268,7 +316,7 @@ def fit_distribution_simulation(sim_num_quakes, sim_type):
     # Empirical distribution function (Method 2: using Python function ECDF)
     ecdf = ECDF(sim_num_quakes)
     plt.figure()
-    plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Time Difference ECDF')
+    plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Interarrival Times eCDF')
     plt.plot(xs, estExpDist.cdf(xs), 'r', label='Exponential Distribution')
     plt.plot(xs, estNormDist.cdf(xs), color='b', label='Normal Distribution')
     plt.plot(xs, estGammaDist.cdf(xs), 'y', label='Gamma Distribution')
@@ -332,35 +380,38 @@ if __name__ == "__main__":
     # Geographical area of query
     region = 'Philippines'
 
-    # Descriptive statistics
+    # Data analysis - Descriptive Statistics
     data_eq, data_high_mag_eq, data_low_mag_eq = plot_counts(region=region,
                                                              aggregate_period='M',
                                                              aggregate_label='month')
 
-    # Transform dataframes with earthquakes time to interarrival times
-    diff_data_eq = transform_time_diff_data(data_eq)
-    diff_data_high_mag_eq = transform_time_diff_data(data_high_mag_eq)
-    diff_data_low_mag_eq = transform_time_diff_data(data_low_mag_eq)
+    # # Data analysis - Descriptive Statistics (Plot earthquake locations)
+    # plot_geospatial(data_eq, magnitude_label='all')
+    # plot_geospatial(data_high_mag_eq, magnitude_label='high magnitude')
+    # plot_geospatial(data_low_mag_eq, magnitude_label='low magnitude')
 
-    # # Distribution fitting for interarrival times
+    # Data Analysis - Distribution Fitting (Transform dataframes with earthquakes time to interarrival times)
+    diff_data_eq = transform_time_diff_data(data_eq)
+    diff_data_low_mag_eq = transform_time_diff_data(data_low_mag_eq)
+    diff_data_high_mag_eq = transform_time_diff_data(data_high_mag_eq)
+
+    # # Data Analysis - Distribution Fitting (For interarrival times)
     # fit_distribution(diff_data_eq, region=region, magnitude='All')
     # fit_distribution(diff_data_low_mag_eq, region=region, magnitude='Low')
     # fit_distribution(diff_data_high_mag_eq, region=region, magnitude='High')
 
-    # Plot earthquake locations
-    plot_geospatial(data_eq, magnitude_label='all')
-    plot_geospatial(data_high_mag_eq, magnitude_label='high magnitude')
-    plot_geospatial(data_low_mag_eq, magnitude_label='low magnitude')
+    # # Data Analysis - Distribution Fitting (Probabilities of < 5 magnitude earthquake)
+    calculate_probabilities(data_eq)
 
-    # # Method 1: Simulate low and high magnitude earthquakes
+    # # Simulation (Method 1: Simulate low and high magnitude earthquakes)
     # sim_num_quakes_low_mag = simulation(diff_data_low_mag_eq)
     # sim_num_quakes_high_mag = simulation(diff_data_high_mag_eq)
 
-    # # Method 1: Find Distribution, mean and sd for low and high magnitude earthquakes
+    # # Simulation (Method 1: Find Distribution, mean and sd for low and high magnitude earthquakes)
     # fit_distribution_simulation(sim_num_quakes_low_mag, 'type-1')
     # fit_distribution_simulation(sim_num_quakes_high_mag, 'type-2')
 
-    # # # Method 1: Find Distribution, mean and sd for all earthquakes combined
+    # # Simulation (Method 1: Find Distribution, mean and sd for all earthquakes combined)
     # sim_num_quakes_total = sim_num_quakes_low_mag + sim_num_quakes_high_mag
     # fit_distribution_simulation(sim_num_quakes_total, 'all')
 
