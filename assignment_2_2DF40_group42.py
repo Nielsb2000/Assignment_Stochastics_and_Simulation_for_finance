@@ -20,14 +20,14 @@ def data_exploration(data_path, aggregate_period, aggregate_label, show_plots):
     :return: filtered dataframes for all, low and high magnitude data
     """
 
-    def filter_data(data_path):
+    def filter_data(data_relative_path):
         """
         Selects relevant data from the full dataset, and splits it into low and high magnitude data
-        :param data_path: relative path to full dataset
+        :param data_relative_path: relative path to full dataset
         :return: dataframes with all earthquakes, low magnitude earthquakes and high magnitude earthquakes
         """
         # Import the data to a dataframe
-        data_eq = pd.read_csv(data_path)
+        data_eq = pd.read_csv(data_relative_path)
 
         # Transform 'time' column values to DateTime objects
         data_eq['DateTime'] = pd.to_datetime(data_eq['time'])
@@ -38,15 +38,15 @@ def data_exploration(data_path, aggregate_period, aggregate_label, show_plots):
         data_eq = data_eq[mask_Philippines]
 
         # Only keep important column and set the new DateTime column as index
-        all_eq_data = data_eq[['DateTime','latitude','longitude','mag']].set_index('DateTime')
+        all_data = data_eq[['DateTime', 'latitude', 'longitude', 'mag']].set_index('DateTime')
 
         # Split DataFrame into 2 DataFrames for earthquakes with magnitudes lower and higher than 5
-        high_mag_eq_data = all_eq_data[all_eq_data['mag']>=5]
-        low_mag_eq_data = all_eq_data[all_eq_data['mag']<5]
+        high_mag_data = all_data[all_data['mag'] >= 5]
+        low_mag_data = all_data[all_data['mag'] < 5]
 
-        return all_eq_data, low_mag_eq_data, high_mag_eq_data
+        return all_data, low_mag_data, high_mag_data
 
-    all_eq_data, low_mag_eq_data, high_mag_eq_data = filter_data(data_path=data_path)
+    all_eq_data, low_mag_eq_data, high_mag_eq_data = filter_data(data_relative_path=data_path)
 
     # Count amount of earthquakes per day/week/month
     full_counts = all_eq_data.resample(aggregate_period).size()
@@ -281,15 +281,14 @@ def calculate_probabilities(data_eq, show_plots):
 
     return prob
 
-def simulation_method_1(fit_dist_low, fit_dist_high):
+def simulate_from_distribution(num_of_years, fitted_distribution):
     """
-    Simulates T years of earthquakes, by sampling for type-1 and type-2 earthquakes first.
-    Samples using a previously fitted distribution for interarrival times
-    :param fit_dist_low: fitted distribution for low magnitude data (type 2)
-    :param fit_dist_high: fitted distribution for high magnitude data (type 1)
-    :return: lists for amount of earthquakes per year for low, high and all magnitude earthquakes
+    Simulates T years of earthquakes, by sampling from a previously fitted distribution
+    :param num_of_years: times (amount of years) to repeat simulation
+    :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
+    :return: lists of interarrival times for T years and a numbers with the total count of earthquakes for T years
     """
-    def simulate_year_from_emp_data(fitted_distribution):
+    def simulate_year_from_fit_dist(fitted_distribution):
         """
         Simulates one year of earthquakes, by sampling from a previously fitted distribution
         :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
@@ -300,7 +299,7 @@ def simulation_method_1(fit_dist_low, fit_dist_high):
         year_of_quakes = []
         # Simulate earthquakes until we exceed one year
         while current_time < seconds_in_year:
-            # Sample an interarrival time from the empirical data
+            # Sample an interarrival time using a fitted distribution
             sampled_time = fitted_distribution.rvs(1)  # samples random earthquake
             current_time += sampled_time  # calc total time
 
@@ -312,81 +311,56 @@ def simulation_method_1(fit_dist_low, fit_dist_high):
 
     def sim_num_years(T: int, fitted_distribution):
         """
-        Runs simulate_year_from_emp_data T times, so a distribution of earthquake count per year can be found
-        :param T: times to repeat simulation
+        Runs simulate_year_from_fit_dist T times, so a distribution of earthquake count per year can be found
+        :param T: times (amount of years) to repeat simulation
         :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
-        :return: lists of interarrival times for T years and a numbers with the total count of earthquakes for T years
+        :return: lists of interarrival times for T years and numbers with the total count of earthquakes for T years
         """
         sim_data = []
         num_of_quakes_each_year = []
-        for n in range(T):
-            year_of_quakes, quake_count = simulate_year_from_emp_data(fitted_distribution)
+        for n in range(T): # do simulation for T years
+            year_of_quakes, quake_count = simulate_year_from_fit_dist(fitted_distribution)
             sim_data.append(year_of_quakes)
             num_of_quakes_each_year.append(quake_count)
         return sim_data, np.array(num_of_quakes_each_year)
 
-    num_of_years = 100  # Also the T variable in N(T)
+    sim_data, sim_num_quakes = sim_num_years(num_of_years, fitted_distribution)
 
+    return sim_data, sim_num_quakes
+
+def simulation_method_1(num_of_years, fit_dist_low, fit_dist_high):
+    """
+    Simulates T years of earthquakes, by sampling for type-1 and type-2 earthquakes first, and adding them together
+    to get earthquake counts for all magnitudes.
+    Samples using a previously fitted distribution for interarrival times.
+    :param num_of_years: times (amount of years) to repeat simulation; Also the T variable in N(T)
+    :param fit_dist_low: fitted distribution for low magnitude data (type 2)
+    :param fit_dist_high: fitted distribution for high magnitude data (type 1)
+    :return: lists for amount of earthquakes per year for low, high and all magnitude earthquakes
+    """
     # Sample for type 1 earthquakes (Get N_1(T))
-    sim_data_high, sim_num_quakes_high = sim_num_years(num_of_years, fit_dist_high)
+    sim_data_high, sim_num_quakes_high = simulate_from_distribution(num_of_years, fit_dist_high)
 
     # Sample for type 2 earthquakes (Get N_2(T))
-    sim_data_high, sim_num_quakes_low = sim_num_years(num_of_years, fit_dist_low)
+    sim_data_high, sim_num_quakes_low = simulate_from_distribution(num_of_years, fit_dist_low)
 
     # Combine to get number of earthquakes for all magnitude data (Get N_(T))
     sim_num_quakes_total = sim_num_quakes_high + sim_num_quakes_low
 
     return sim_num_quakes_low, sim_num_quakes_high, sim_num_quakes_total
 
-def simulation_method_2(fit_dist_total, prob_lower_5):
+def simulation_method_2(num_of_years, fit_dist_total, prob_lower_5):
     """
     Simulates T years of earthquakes, by sampling for all magnitude data first and randomly determining how many are
     type 1 and how many are type 2, using a previously calculated probability.
-    Samples using a previously fitted distribution for interarrival times
+    Samples using a previously fitted distribution for interarrival times.
+    :param num_of_years: times (amount of years) to repeat simulation; Also the T variable in N(T)
     :param fit_dist_total: fitted distribution for all magnitude data
     :param prob_lower_5: probability that an arbitrary earthquakes has a magnitude of less than 5
     :return: lists for amount of earthquakes per year for low, high and all magnitude earthquakes
     """
-    def simulate_year_from_emp_data(fitted_distribution):
-        """
-        Simulates one year of earthquakes, by sampling from a previously fitted distribution
-        :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
-        :return: list of interarrival times in the year and a number with the total count of earthquakes in the year
-        """
-        seconds_in_year = 365.25 * 24 * 3600  # Approx. 31,557,600 seconds
-        current_time = 0
-        year_of_quakes = []
-        # Simulate earthquakes until we exceed one year
-        while current_time < seconds_in_year:
-            # Sample an interarrival time from the empirical data
-            sampled_time = fitted_distribution.rvs(1)  # samples random earthquake
-            current_time += sampled_time  # calc total time
-
-            if current_time < seconds_in_year:  # if total time is less than a year
-                # Add earthquake (time in seconds between the last one and this one) to that year list of earthquakes
-                year_of_quakes.append(float(sampled_time[0]))
-                quake_count = len(year_of_quakes)
-        return year_of_quakes, quake_count
-
-    def sim_num_years(T: int, fitted_distribution):
-        """
-        Runs simulate_year_from_emp_data T times, so a distribution of earthquake count per year can be found
-        :param T: times to repeat simulation
-        :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
-        :return: lists of interarrival times for T years and a numbers with the total count of earthquakes for T years
-        """
-        sim_data = []
-        num_of_quakes_each_year = []
-        for n in range(T):
-            year_of_quakes, quake_count = simulate_year_from_emp_data(fitted_distribution)
-            sim_data.append(year_of_quakes)
-            num_of_quakes_each_year.append(quake_count)
-        return sim_data, np.array(num_of_quakes_each_year)
-
-    num_of_years = 100  # Also the T variable in N(T)
-
     # Sample for all earthquakes (Get N(T))
-    sim_data_total, sim_num_quakes_total = sim_num_years(num_of_years, fit_dist_total)
+    sim_data_total, sim_num_quakes_total = simulate_from_distribution(num_of_years, fit_dist_total)
 
     # Randomly how many earthquakes are type 1 and type 2
     prob_low = prob_lower_5 # previously calculated probability for earthquakes with magnitude < 5
@@ -414,6 +388,55 @@ def simulation_method_2(fit_dist_total, prob_lower_5):
     sim_num_quakes_low = np.array(sim_num_quakes_low, dtype=int)
 
     return sim_num_quakes_low, sim_num_quakes_high, sim_num_quakes_total
+
+def simulate_empirical(num_of_years, empirical_data):
+    """
+    Simulates T years of earthquakes, by sampling from the empirical interarrival times.
+    :param num_of_years: times (amount of years) to repeat simulation
+    :param empirical_data: the empirical data, containing the actual interarrival times between earthquakes
+    :return: lists of interarrival times for T years and numbers with the total count of earthquakes for T years
+    """
+    rng = np.random.default_rng()
+
+    def simulate_year_from_emp_data(empirical_data):
+        """
+        Simulates one year of earthquakes, by sampling from the empirical interarrival times.
+        :param empirical_data: the empirical data, containing the actual interarrival times between earthquakes
+        :return: list of interarrival times in the year and a number with the total count of earthquakes in the year
+        """
+        seconds_in_year = 365.25 * 24 * 3600  # Approx. 31,557,600 seconds
+        current_time = 0
+        year_of_quakes = []
+        # Simulate earthquakes until we exceed one year
+        while current_time < seconds_in_year:
+            # Sample an interarrival time from the empirical data
+            sampled_time = rng.choice(empirical_data)  # pick random earthquake
+            current_time += sampled_time  # calc total time
+
+            if current_time < seconds_in_year:  # if total time is less than a year
+                # Add earthquake (time in seconds between the last one and this one) to that year list of earthquakes
+                year_of_quakes.append(sampled_time)
+                quake_count = len(year_of_quakes)
+        return year_of_quakes, quake_count
+
+    def sim_num_years(T: int, empirical_data):
+        """
+        Runs simulate_year_from_emp_data T times, so a distribution of earthquake count per year can be found
+        :param T: times (amount of years) to repeat simulation
+        :param empirical_data: the empirical data, containing the actual interarrival times between earthquakes
+        :return: lists of interarrival times for T years and a numbers with the total count of earthquakes for T years
+        """
+        sim_data = []
+        num_of_quakes_each_year = []
+        for n in range(T): # do simulation for T years
+            year_of_quakes, quake_count = simulate_year_from_emp_data(empirical_data)
+            sim_data.append(year_of_quakes)
+            num_of_quakes_each_year.append(quake_count)
+        return sim_data, np.array(num_of_quakes_each_year)
+
+    sim_data, sim_num_quakes = sim_num_years(num_of_years, empirical_data)
+
+    return sim_data, sim_num_quakes
 
 def fit_distribution_simulation(sim_num_quakes, sim_type, show_plots):
     """
@@ -561,18 +584,38 @@ if __name__ == "__main__":
 
     # Simulation (Method 1)
     m1_sim_num_quakes_low_mag, m1_sim_num_quakes_high_mag, m1_sim_num_quakes_total = (
-        simulation_method_1(estGammaDist_low_mag, estGammaDist_high_mag))
+        simulation_method_1(num_of_years=100, fit_dist_low=estGammaDist_low_mag, fit_dist_high=estGammaDist_high_mag))
 
-    # Simulation (Method 1: Find Distribution, mean and sd and plot some figures)
-    fit_distribution_simulation(m1_sim_num_quakes_low_mag, sim_type='type-1', show_plots=True)
-    # fit_distribution_simulation(m1_sim_num_quakes_high_mag, sim_type='type-2', show_plots=False)
+    # # Simulation (Method 1: Find Distribution, mean and sd and plot some figures)
     # fit_distribution_simulation(m1_sim_num_quakes_total, sim_type='all', show_plots=False)
+    fit_distribution_simulation(m1_sim_num_quakes_low_mag, sim_type='type-2', show_plots=True)
+    # fit_distribution_simulation(m1_sim_num_quakes_high_mag, sim_type='type-1', show_plots=False)
+
 
     # Simulation (Method 2)
     m2_sim_num_quakes_low_mag, m2_sim_num_quakes_high_mag, m2_sim_num_quakes_total = (
-        simulation_method_2(estGammaDist, prob_mag_less_5))
+        simulation_method_2(num_of_years=100, fit_dist_total=estGammaDist, prob_lower_5=prob_mag_less_5))
 
-    # Simulation (Method 2: Find Distribution, mean and sd and plot some figures)
-    fit_distribution_simulation(m2_sim_num_quakes_low_mag, sim_type='type-1', show_plots=True)
-    # fit_distribution_simulation(m2_sim_num_quakes_high_mag, sim_type='type-2', show_plots=False)
+    # # Simulation (Method 2: Find Distribution, mean and sd and plot some figures)
     # fit_distribution_simulation(m2_sim_num_quakes_total, sim_type='all', show_plots=False)
+    fit_distribution_simulation(m2_sim_num_quakes_low_mag, sim_type='type-2', show_plots=True)
+    # fit_distribution_simulation(m2_sim_num_quakes_high_mag, sim_type='type-1', show_plots=False)
+
+
+    # # Sensitivity analysis (Sample from the empirical data)
+    # emp_sim_data_total, emp_sim_num_quakes_total = (
+    #     simulate_empirical(num_of_years=100, empirical_data=diff_data_eq))
+    emp_sim_data_low_mag, emp_sim_num_quakes_low_mag = (
+        simulate_empirical(num_of_years=100, empirical_data=diff_data_low_mag_eq))
+    # emp_sim_data_high_mag, emp_sim_num_quakes_high_mag = (
+    #     simulate_empirical(num_of_years=100, empirical_data=diff_data_high_mag_eq))
+
+    # # Sensitivity analysis (Find Distribution, mean and sd and plot some figures)
+    # fit_distribution_simulation(emp_sim_num_quakes_total, sim_type='all', show_plots=False)
+    fit_distribution_simulation(emp_sim_num_quakes_low_mag, sim_type='type-2', show_plots=True)
+    # fit_distribution_simulation(emp_sim_num_quakes_high_mag, sim_type='type-1', show_plots=False)
+
+
+
+
+
