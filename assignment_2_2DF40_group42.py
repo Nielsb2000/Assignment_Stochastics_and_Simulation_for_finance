@@ -127,7 +127,7 @@ def transform_time_diff_data(data):
 
     return time_diff_data
 
-def fit_distribution(time_diff_data, region, magnitude):
+def fit_distribution(time_diff_data, region, magnitude, show_plots):
     # Fitting distributions
     # First and second moment
     M1 = np.mean(time_diff_data)  # first moment
@@ -162,32 +162,33 @@ def fit_distribution(time_diff_data, region, magnitude):
     # Add theoretical density
     xs = np.arange(np.min(time_diff_data), np.max(time_diff_data))
 
-    # Show a plot with the histogram of the time difference data, and the estimated distributions
-    plt.figure(figsize=(8, 8))
-    plt.hist(time_diff_data, bins=80, edgecolor='black', density=True)
-    plt.plot(xs, estExpDist.pdf(xs), 'r', label='Exponential Distribution')
-    plt.plot(xs, estNormDist.pdf(xs), 'b', label='Normal Distribution')
-    # plt.plot(xs, estGammaDist.pdf(xs), 'y', label='Gamma Distribution')
-    plt.plot(xs, estUniformDist.pdf(xs), 'm', label='Uniform Distribution')
-    plt.title('Histogram of interarrival times with fitted distributions', size=17)
-    plt.xlabel('Interarrival Time (s)', size=11)
-    plt.ylabel('Density', size=11)
-    plt.legend()
-    plt.show()
+    if show_plots is True:
+        # Show a plot with the histogram of the time difference data, and the estimated distributions
+        plt.figure(figsize=(8, 8))
+        plt.hist(time_diff_data, bins=80, edgecolor='black', density=True)
+        plt.plot(xs, estExpDist.pdf(xs), 'r', label='Exponential Distribution')
+        plt.plot(xs, estNormDist.pdf(xs), 'b', label='Normal Distribution')
+        # plt.plot(xs, estGammaDist.pdf(xs), 'y', label='Gamma Distribution')
+        plt.plot(xs, estUniformDist.pdf(xs), 'm', label='Uniform Distribution')
+        plt.title('Histogram of interarrival times with fitted distributions', size=17)
+        plt.xlabel('Interarrival Time (s)', size=11)
+        plt.ylabel('Density', size=11)
+        plt.legend()
+        plt.show()
 
-    # Empirical distribution function (Method 2: using Python function ECDF)
-    ecdf = ECDF(time_diff_data)
-    plt.figure(figsize=(9, 9))
-    plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Interarrival Times eCDF')
-    plt.plot(xs, estExpDist.cdf(xs), 'r', label='Exponential Distribution')
-    plt.plot(xs, estNormDist.cdf(xs), color='b', label='Normal Distribution')
-    plt.plot(xs, estGammaDist.cdf(xs), 'y', label='Gamma Distribution')
-    plt.plot(xs, estUniformDist.cdf(xs), 'm', label='Uniform Distribution')
-    plt.title('Empirical Distribution Function with fitted cumulative distributions', size=18)
-    plt.xlabel('Interarrival Time (s)', size=12)
-    plt.ylabel('Cumulative Probability', size=12)
-    plt.legend()
-    plt.show()
+        # Empirical distribution function (Method 2: using Python function ECDF)
+        ecdf = ECDF(time_diff_data)
+        plt.figure(figsize=(9, 9))
+        plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Interarrival Times eCDF')
+        plt.plot(xs, estExpDist.cdf(xs), 'r', label='Exponential Distribution')
+        plt.plot(xs, estNormDist.cdf(xs), color='b', label='Normal Distribution')
+        plt.plot(xs, estGammaDist.cdf(xs), 'y', label='Gamma Distribution')
+        plt.plot(xs, estUniformDist.cdf(xs), 'm', label='Uniform Distribution')
+        plt.title('Empirical Distribution Function with fitted cumulative distributions', size=18)
+        plt.xlabel('Interarrival Time (s)', size=12)
+        plt.ylabel('Cumulative Probability', size=12)
+        plt.legend()
+        plt.show()
 
     # Kolmogorov-Smirnov test
     test_exponential = stats.kstest(time_diff_data, estExpDist.cdf)
@@ -205,6 +206,8 @@ def fit_distribution(time_diff_data, region, magnitude):
         f.write('\nKS Test Normal distribution: ' + str(test_normal[1]))
         f.write('\nKS Test Gamma distribution: ' + str(test_gamma[1]))
         f.write('\nKS Test Uniform distribution: ' + str(test_uniform[1]))
+
+    return (estExpDist, estNormDist, estGammaDist, estUniformDist)
 
 def calculate_probabilities(data_eq):
     # Cumulative distribution function for magnitudes
@@ -232,10 +235,8 @@ def calculate_probabilities(data_eq):
     prob = len(data_eq[data_eq['mag'] < 5]) / len(data_eq)
     print(f'Probability that random earthquake has magnitude less than 5 is equal to = {prob}')
 
-def simulation(time_diff_data):
-    rng = np.random.default_rng()
-
-    def simulate_year_from_empdata(empirical_data):
+def simulation(fitted_distribution):
+    def simulate_year_from_empdata(fitted_distribution):
         """Empirical data has to be in seconds and returns a year of earthquakes based on that data"""
         seconds_in_year = 365.25 * 24 * 3600  # Approx. 31,557,600 seconds
         current_time = 0
@@ -243,29 +244,29 @@ def simulation(time_diff_data):
         # Simulate earthquakes until we exceed one year
         while current_time < seconds_in_year:
             # Sample an interarrival time from the empirical data
-            sampled_time = rng.choice(empirical_data)  # pick random earthquake
+            sampled_time = fitted_distribution.rvs(1)  # samples random earthquake
             current_time += sampled_time  # calc total time
 
             if current_time < seconds_in_year:  # if total time is less than a year
-                year_of_quakes.append(
-                    sampled_time)  # add earthquake(time in seconds between the last one and this one) to that year list of earthquakes
+                # add earthquake (time in seconds between the last one and this one) to that year list of earthquakes
+                year_of_quakes.append(float(sampled_time[0]))
                 quake_count = len(year_of_quakes)
         return year_of_quakes, quake_count
 
-    def sim_num_years(T: int, dataset):
+    def sim_num_years(T: int, fitted_distribution):
         sim_data = []
         num_of_quakes_each_year = []
         for n in range(T):
-            year_of_quakes, quake_count = simulate_year_from_empdata(empirical_data=dataset)
+            year_of_quakes, quake_count = simulate_year_from_empdata(fitted_distribution)
             sim_data.append(year_of_quakes)
             num_of_quakes_each_year.append(quake_count)
         return sim_data, np.array(num_of_quakes_each_year)
 
     num_of_years = 100  # Also the T variable in N(T)
 
-    sim_data, sim_num_quakes = sim_num_years(num_of_years, time_diff_data)
+    sim_data, sim_num_quakes = sim_num_years(num_of_years, fitted_distribution)
 
-    return sim_num_quakes
+    return sim_data, sim_num_quakes
 
 def fit_distribution_simulation(sim_num_quakes, sim_type):
     # Fitting distributions
@@ -294,22 +295,24 @@ def fit_distribution_simulation(sim_num_quakes, sim_type):
     print(f'Uniform distribution: a={aEst}, b={bEst}')
 
     # The estimated distributions
-    estExpDist = stats.expon(scale=1 / lamEst)
-    estNormDist = stats.norm(muEst, np.sqrt(sigma2Est))
-    estGammaDist = stats.gamma(alphaEst, scale=1 / betaEst)
-    estUniformDist = stats.uniform(loc=aEst, scale=bEst - aEst)
+    sim_estExpDist = stats.expon(scale=1 / lamEst)
+    sim_estNormDist = stats.norm(muEst, np.sqrt(sigma2Est))
+    sim_estGammaDist = stats.gamma(alphaEst, scale=1 / betaEst)
+    sim_estUniformDist = stats.uniform(loc=aEst, scale=bEst - aEst)
 
     # Add theoretical density
     xs = np.arange(np.min(sim_num_quakes), np.max(sim_num_quakes))
-    # print(xs)
 
-    # Show a plot with the histogram of the time difference data, and the estimated distributions
+    # Show a plot with the histogram of the simulated earthquake counts, and the estimated distributions
     plt.figure()
-    plt.hist(sim_num_quakes, bins=20, rwidth=0.8, edgecolor='black', density=True)
-    plt.plot(xs, estExpDist.pdf(xs), 'r', label='Exponential Distribution')
-    plt.plot(xs, estNormDist.pdf(xs), 'b', label='Normal Distribution')
-    plt.plot(xs, estGammaDist.pdf(xs), 'y', label='Gamma Distribution')
-    plt.plot(xs, estUniformDist.pdf(xs), 'm', label='Uniform Distribution')
+    plt.hist(sim_num_quakes, bins=10, edgecolor='black', density=True)
+    plt.plot(xs, sim_estExpDist.pdf(xs), 'r', label='Exponential Distribution')
+    plt.plot(xs, sim_estNormDist.pdf(xs), 'b', label='Normal Distribution')
+    plt.plot(xs, sim_estGammaDist.pdf(xs), 'y', label='Gamma Distribution')
+    plt.plot(xs, sim_estUniformDist.pdf(xs), 'm', label='Uniform Distribution')
+    plt.title('Distributions of Simulated Earthquakes Count')
+    plt.xlabel('Simulated number of earthquakes')
+    plt.ylabel('Density')
     plt.legend()
     plt.show()
 
@@ -317,22 +320,22 @@ def fit_distribution_simulation(sim_num_quakes, sim_type):
     ecdf = ECDF(sim_num_quakes)
     plt.figure()
     plt.step(ecdf.x, ecdf.y, color='black', where='post', label='Interarrival Times eCDF')
-    plt.plot(xs, estExpDist.cdf(xs), 'r', label='Exponential Distribution')
-    plt.plot(xs, estNormDist.cdf(xs), color='b', label='Normal Distribution')
-    plt.plot(xs, estGammaDist.cdf(xs), 'y', label='Gamma Distribution')
-    plt.plot(xs, estUniformDist.cdf(xs), 'm', label='Uniform Distribution')
+    plt.plot(xs, sim_estExpDist.cdf(xs), 'r', label='Exponential Distribution')
+    plt.plot(xs, sim_estNormDist.cdf(xs), color='b', label='Normal Distribution')
+    plt.plot(xs, sim_estGammaDist.cdf(xs), 'y', label='Gamma Distribution')
+    plt.plot(xs, sim_estUniformDist.cdf(xs), 'm', label='Uniform Distribution')
     plt.legend()
     plt.show()
 
     # Kolmogorov-Smirnov test
-    test_exponential = stats.kstest(sim_num_quakes, estExpDist.cdf)
-    test_normal = stats.kstest(sim_num_quakes, estNormDist.cdf)
-    test_gamma = stats.kstest(sim_num_quakes, estGammaDist.cdf)
-    test_uniform = stats.kstest(sim_num_quakes, estUniformDist.cdf)
-    print('KS Test Exponential distribution: ' + str(test_exponential))
-    print('KS Test Normal distribution: ' + str(test_normal))
-    print('KS Test Gamma distribution: ' + str(test_gamma))
-    print('KS Test Uniform distribution: ' + str(test_uniform))
+    test_sim_exponential = stats.kstest(sim_num_quakes, sim_estExpDist.cdf)
+    test_sim_normal = stats.kstest(sim_num_quakes, sim_estNormDist.cdf)
+    test_sim_gamma = stats.kstest(sim_num_quakes, sim_estGammaDist.cdf)
+    test_sim_uniform = stats.kstest(sim_num_quakes, sim_estUniformDist.cdf)
+    print('KS Test Exponential distribution: ' + str(test_sim_exponential))
+    print('KS Test Normal distribution: ' + str(test_sim_normal))
+    print('KS Test Gamma distribution: ' + str(test_sim_gamma))
+    print('KS Test Uniform distribution: ' + str(test_sim_uniform))
 
     # Confidence intervals (# 2. Using Slutsky's theorem: estimate the sample variance)
     s2 = np.var(sim_num_quakes)
@@ -396,23 +399,26 @@ if __name__ == "__main__":
     diff_data_high_mag_eq = transform_time_diff_data(data_high_mag_eq)
 
     # # Data Analysis - Distribution Fitting (For interarrival times)
-    # fit_distribution(diff_data_eq, region=region, magnitude='All')
-    # fit_distribution(diff_data_low_mag_eq, region=region, magnitude='Low')
-    # fit_distribution(diff_data_high_mag_eq, region=region, magnitude='High')
+    # estExpDist, estNormDist, estGammaDist, estUniformDist = (
+    #     fit_distribution(diff_data_eq, region=region, magnitude='All', show_plots=False))
+    estExpDist_low_mag, estNormDist_low_mag, estGammaDist_low_mag, estUniformDist_low_mag = (
+        fit_distribution(diff_data_low_mag_eq, region=region, magnitude='Low', show_plots=False))
+    estExpDist_high_mag, estNormDist_high_mag, estGammaDist_high_mag, estUniformDist_high_mag = (
+        fit_distribution(diff_data_high_mag_eq, region=region, magnitude='High', show_plots=False))
 
     # # Data Analysis - Distribution Fitting (Probabilities of < 5 magnitude earthquake)
-    calculate_probabilities(data_eq)
+    # calculate_probabilities(data_eq)
 
-    # # Simulation (Method 1: Simulate low and high magnitude earthquakes)
-    # sim_num_quakes_low_mag = simulation(diff_data_low_mag_eq)
-    # sim_num_quakes_high_mag = simulation(diff_data_high_mag_eq)
+    # Simulation (Method 1: Simulate low and high magnitude earthquakes)
+    sim_quakes_low_mag, sim_num_quakes_low_mag = simulation(estGammaDist_low_mag)
+    sim_quakes_high_mag, sim_num_quakes_high_mag = simulation(estGammaDist_high_mag)
 
-    # # Simulation (Method 1: Find Distribution, mean and sd for low and high magnitude earthquakes)
-    # fit_distribution_simulation(sim_num_quakes_low_mag, 'type-1')
-    # fit_distribution_simulation(sim_num_quakes_high_mag, 'type-2')
+    # Simulation (Method 1: Find Distribution, mean and sd for low and high magnitude earthquakes)
+    fit_distribution_simulation(sim_num_quakes_low_mag, 'type-1')
+    fit_distribution_simulation(sim_num_quakes_high_mag, 'type-2')
 
-    # # Simulation (Method 1: Find Distribution, mean and sd for all earthquakes combined)
-    # sim_num_quakes_total = sim_num_quakes_low_mag + sim_num_quakes_high_mag
-    # fit_distribution_simulation(sim_num_quakes_total, 'all')
+    # Simulation (Method 1: Find Distribution, mean and sd for all earthquakes combined)
+    sim_num_quakes_total = sim_num_quakes_low_mag + sim_num_quakes_high_mag
+    fit_distribution_simulation(sim_num_quakes_total, 'all')
 
 
