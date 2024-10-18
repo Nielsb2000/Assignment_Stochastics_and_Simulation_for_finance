@@ -283,9 +283,10 @@ def calculate_probabilities(data_eq, show_plots):
 
 def simulation_method_1(fit_dist_low, fit_dist_high):
     """
-    Simulates T years of earthquakes, by sampling from a previously fitted distribution
+    Simulates T years of earthquakes, by sampling for type-1 and type-2 earthquakes first.
+    Samples using a previously fitted distribution for interarrival times
     :param fit_dist_low: fitted distribution for low magnitude data (type 2)
-    :param fit_dist_high: fitted distribution for high magnitude data (type 3)
+    :param fit_dist_high: fitted distribution for high magnitude data (type 1)
     :return: lists for amount of earthquakes per year for low, high and all magnitude earthquakes
     """
     def simulate_year_from_emp_data(fitted_distribution):
@@ -334,6 +335,83 @@ def simulation_method_1(fit_dist_low, fit_dist_high):
 
     # Combine to get number of earthquakes for all magnitude data (Get N_(T))
     sim_num_quakes_total = sim_num_quakes_high + sim_num_quakes_low
+
+    return sim_num_quakes_low, sim_num_quakes_high, sim_num_quakes_total
+
+def simulation_method_2(fit_dist_total, prob_lower_5):
+    """
+    Simulates T years of earthquakes, by sampling for all magnitude data first and randomly determining how many are
+    type 1 and how many are type 2, using a previously calculated probability.
+    Samples using a previously fitted distribution for interarrival times
+    :param fit_dist_total: fitted distribution for all magnitude data
+    :param prob_lower_5: probability that an arbitrary earthquakes has a magnitude of less than 5
+    :return: lists for amount of earthquakes per year for low, high and all magnitude earthquakes
+    """
+    def simulate_year_from_emp_data(fitted_distribution):
+        """
+        Simulates one year of earthquakes, by sampling from a previously fitted distribution
+        :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
+        :return: list of interarrival times in the year and a number with the total count of earthquakes in the year
+        """
+        seconds_in_year = 365.25 * 24 * 3600  # Approx. 31,557,600 seconds
+        current_time = 0
+        year_of_quakes = []
+        # Simulate earthquakes until we exceed one year
+        while current_time < seconds_in_year:
+            # Sample an interarrival time from the empirical data
+            sampled_time = fitted_distribution.rvs(1)  # samples random earthquake
+            current_time += sampled_time  # calc total time
+
+            if current_time < seconds_in_year:  # if total time is less than a year
+                # Add earthquake (time in seconds between the last one and this one) to that year list of earthquakes
+                year_of_quakes.append(float(sampled_time[0]))
+                quake_count = len(year_of_quakes)
+        return year_of_quakes, quake_count
+
+    def sim_num_years(T: int, fitted_distribution):
+        """
+        Runs simulate_year_from_emp_data T times, so a distribution of earthquake count per year can be found
+        :param T: times to repeat simulation
+        :param fitted_distribution: the fitted distribution that will be used to sample interarrival times
+        :return: lists of interarrival times for T years and a numbers with the total count of earthquakes for T years
+        """
+        sim_data = []
+        num_of_quakes_each_year = []
+        for n in range(T):
+            year_of_quakes, quake_count = simulate_year_from_emp_data(fitted_distribution)
+            sim_data.append(year_of_quakes)
+            num_of_quakes_each_year.append(quake_count)
+        return sim_data, np.array(num_of_quakes_each_year)
+
+    num_of_years = 100  # Also the T variable in N(T)
+
+    # Sample for all earthquakes (Get N(T))
+    sim_data_total, sim_num_quakes_total = sim_num_years(num_of_years, fit_dist_total)
+
+    # Randomly how many earthquakes are type 1 and type 2
+    prob_low = prob_lower_5 # previously calculated probability for earthquakes with magnitude < 5
+    prob_high = 1 - prob_lower_5 # probability magnitude >= 5
+
+    # The 2 types of earthquakes to randomly split between
+    eq_types = [1, 2]
+
+    # Initialize lists to hold the counts of each type per year
+    sim_num_quakes_high = [] # initiate list for earthquake counts per year for type 1 earthquakes
+    sim_num_quakes_low = [] # initiate list for earthquake counts per year for type 2 earthquakes
+
+    # Loop through each year and apply the split
+    for count in sim_num_quakes_total:
+        # Randomly gives values of 1 or 2 (indicate type 1 or 2 earthquakes), according to the probability
+        earthquake_types_random = np.random.choice(eq_types, count, p=[prob_high, prob_low])
+        count_type_1 = np.sum(earthquake_types_random == 1) # count number of 1's = high magnitude earthquakes
+        count_type_2 = np.sum(earthquake_types_random == 2) # count number of 2's = low magnitude earthquakes
+
+        sim_num_quakes_high.append(count_type_1)
+        sim_num_quakes_low.append(count_type_2)
+
+    # Convert to correct format (Numpy array with integers (not np.int64)
+    sim_num_quakes_high = np.array(sim_num_quakes_high, dtype=int)
+    sim_num_quakes_low = np.array(sim_num_quakes_low, dtype=int)
 
     return sim_num_quakes_low, sim_num_quakes_high, sim_num_quakes_total
 
@@ -414,22 +492,17 @@ def fit_distribution_simulation(sim_num_quakes, sim_type, show_plots):
         print('KS Test Gamma distribution: ' + str(test_sim_gamma))
         print('KS Test Uniform distribution: ' + str(test_sim_uniform))
 
-    # Confidence intervals (# 2. Using Slutsky's theorem: estimate the sample variance)
+    # Confidence intervals for the mean(Using Slutsky's theorem: estimate the sample variance)
     s2 = np.var(sim_num_quakes)
-    # s2_alt = alphaEst / (betaEst ** 2)
     m = np.mean(sim_num_quakes)
-    z = 1.96
+    z = 1.96 # 5% confidence interval
     half_width = z * np.sqrt(s2 / len(sim_num_quakes))
 
-    # lower_bound = max(0, m - half_width)
-    # upper_bound = m + half_width
-    # interval = (lower_bound, upper_bound)
+    interval = (m - half_width, m + half_width) # the confidence interval
 
-    interval = (m - half_width, m + half_width)
-
+    # Values for mean and standard deviation for plotting
     mean = M1
-    # std_dev = np.sqrt(M2) # std dev approx from the interval
-    std_dev = np.sqrt(sigma2Est)
+    std_dev = np.sqrt(sigma2Est) # std dev approx from the interval
 
     print(f'Mean: {mean}')
     print(f'Standard deviation: {std_dev}')
@@ -439,22 +512,24 @@ def fit_distribution_simulation(sim_num_quakes, sim_type, show_plots):
     x_values = np.linspace(mean - 3*std_dev, mean + 3*std_dev, 1000)
     y_values = norm.pdf(x_values, mean, std_dev)
 
-    # Create the plot
-    plt.figure(figsize=(10, 6))
-    plt.plot(x_values, y_values, label="Normal Distribution", color="blue")
+    # Plot for confidence interval
+    if show_plots:
+        # Create plot to show confidence interval around mean with a normal distribution
+        plt.figure(figsize=(10, 6))
+        plt.plot(x_values, y_values, label="Normal Distribution", color="blue")
 
-    # Plot the vertical line at the given point
-    plt.axvline(mean, color='red', linestyle='--', label=f'mean of {mean}')
-    plt.axvline(interval[0], color='orange', linestyle='--', label=f'left-sided confidence interval of {interval[0]}')
-    plt.axvline(interval[1], color='orange', linestyle='--', label=f'right-sided confidence interval of {interval[1]}')
+        # Confidence interval lines
+        plt.axvline(mean, color='red', linestyle='--', label=f'mean of {mean}')
+        plt.axvline(interval[0], color='orange', linestyle='--', label=f'left-sided confidence interval of {interval[0]}')
+        plt.axvline(interval[1], color='orange', linestyle='--', label=f'right-sided confidence interval of {interval[1]}')
 
-    # Add labels and title
-    plt.title(f"Confidence interval of mean of {sim_type} earthquakes")
-    plt.xlim((mean - 3 * std_dev, mean + 3 * std_dev))  # Set limits to match x_values range
-    plt.xlabel("Value")
-    plt.ylabel("Probability Density")
-    plt.legend()
-    plt.show()
+        # Add labels and title
+        plt.title(f"Confidence interval of mean of {sim_type} earthquakes")
+        plt.xlim((mean - 3 * std_dev, mean + 3 * std_dev))  # Set limits to match x_values range
+        plt.xlabel("Value")
+        plt.ylabel("Probability Density")
+        plt.legend()
+        plt.show()
 
 if __name__ == "__main__":
     # Data analysis - Descriptive Statistics
@@ -485,10 +560,19 @@ if __name__ == "__main__":
     prob_mag_less_5 = calculate_probabilities(all_eq_data, show_plots=False)
 
     # Simulation (Method 1)
-    sim_num_quakes_low_mag, sim_num_quakes_high_mag, sim_num_quakes_total = (
+    m1_sim_num_quakes_low_mag, m1_sim_num_quakes_high_mag, m1_sim_num_quakes_total = (
         simulation_method_1(estGammaDist_low_mag, estGammaDist_high_mag))
 
     # Simulation (Method 1: Find Distribution, mean and sd and plot some figures)
-    fit_distribution_simulation(sim_num_quakes_low_mag, sim_type='type-1', show_plots=False)
-    fit_distribution_simulation(sim_num_quakes_high_mag, sim_type='type-2', show_plots=False)
-    fit_distribution_simulation(sim_num_quakes_total, sim_type='all', show_plots=False)
+    fit_distribution_simulation(m1_sim_num_quakes_low_mag, sim_type='type-1', show_plots=True)
+    # fit_distribution_simulation(m1_sim_num_quakes_high_mag, sim_type='type-2', show_plots=False)
+    # fit_distribution_simulation(m1_sim_num_quakes_total, sim_type='all', show_plots=False)
+
+    # Simulation (Method 2)
+    m2_sim_num_quakes_low_mag, m2_sim_num_quakes_high_mag, m2_sim_num_quakes_total = (
+        simulation_method_2(estGammaDist, prob_mag_less_5))
+
+    # Simulation (Method 2: Find Distribution, mean and sd and plot some figures)
+    fit_distribution_simulation(m2_sim_num_quakes_low_mag, sim_type='type-1', show_plots=True)
+    # fit_distribution_simulation(m2_sim_num_quakes_high_mag, sim_type='type-2', show_plots=False)
+    # fit_distribution_simulation(m2_sim_num_quakes_total, sim_type='all', show_plots=False)
