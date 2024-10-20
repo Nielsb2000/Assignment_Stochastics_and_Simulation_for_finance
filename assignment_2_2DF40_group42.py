@@ -270,8 +270,8 @@ def calculate_probabilities(data_eq, show_plots):
         plt.text(x_value - 1.92, y_value, f'{y_value:.4f}', color='blue', va='center')  # 4 decimals
 
         plt.title('Cumulative distribution function of earthquakes by magnitude', size=18)
-        plt.xlabel('Cumulative probability', size=11)
-        plt.ylabel('Density', size=11)
+        plt.xlabel('Magnitude', size=11)
+        plt.ylabel('Cumulative probability', size=11)
 
         plt.grid()
         plt.show()
@@ -520,6 +520,7 @@ def fit_distribution_simulation(sim_num_quakes, sim_type, show_plots):
     m = np.mean(sim_num_quakes)
     z = 1.96 # 5% confidence interval
     half_width = z * np.sqrt(s2 / len(sim_num_quakes))
+    print(half_width)
 
     interval = (m - half_width, m + half_width) # the confidence interval
 
@@ -580,7 +581,8 @@ if __name__ == "__main__":
         fit_distribution(diff_data_high_mag_eq, show_plots=False))
 
     # Data Analysis - Distribution Fitting (Probability of < 5 magnitude earthquake)
-    prob_mag_less_5 = calculate_probabilities(all_eq_data, show_plots=False)
+    prob_mag_less_5 = calculate_probabilities(all_eq_data, show_plots=True)
+
 
     # Simulation (Method 1)
     m1_sim_num_quakes_low_mag, m1_sim_num_quakes_high_mag, m1_sim_num_quakes_total = (
@@ -606,7 +608,7 @@ if __name__ == "__main__":
     # emp_sim_data_total, emp_sim_num_quakes_total = (
     #     simulate_empirical(num_of_years=100, empirical_data=diff_data_eq))
     emp_sim_data_low_mag, emp_sim_num_quakes_low_mag = (
-        simulate_empirical(num_of_years=100, empirical_data=diff_data_low_mag_eq))
+        simulate_empirical(num_of_years=10000, empirical_data=diff_data_low_mag_eq))
     # emp_sim_data_high_mag, emp_sim_num_quakes_high_mag = (
     #     simulate_empirical(num_of_years=100, empirical_data=diff_data_high_mag_eq))
 
